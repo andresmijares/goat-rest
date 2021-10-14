@@ -20,6 +20,8 @@ var (
 	defaultMaxIdleConnections = 5
 	defaultTimeout            = 5 * time.Second
 	defaultConnectionTimeout  = 5 * time.Second
+
+	errInvalidRequest = errors.New("unable to perform request")
 )
 
 func (c *httpClient) do(method string, url string, headers http.Header, body interface{}) (*core.Response, error) {
@@ -32,7 +34,7 @@ func (c *httpClient) do(method string, url string, headers http.Header, body int
 
 	request, err := http.NewRequest(method, url, bytes.NewBuffer(requestBody))
 	if err != nil {
-		return nil, errors.New("unable to perform request")
+		return nil, errInvalidRequest
 	}
 
 	request.Header = allHeaders
@@ -92,7 +94,7 @@ func (c *httpClient) createHttpClient() core.HttpClient {
 		return goat_mock.MockupServer.GetClient()
 	}
 
-	// ensures the client only one instance of the client is created
+	// ensures the client is instanced only one
 	// even if using multiple goroutines
 	c.clientOnce.Do(func() {
 		if c.config.client != nil {

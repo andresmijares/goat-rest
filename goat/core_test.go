@@ -1,16 +1,228 @@
 package goat
 
 import (
-	"fmt"
+	"errors"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/andresmijares/goat-rest/goat_mock"
 	"github.com/andresmijares/goat-rest/mime"
 )
 
+// type ClientMock struct {
+// }
+
+// func (c *ClientMock) Do(req *http.Request) (*http.Response, error) {
+// 	fmt.Print("HOLIS")
+// 	return nil, errors.New("mock error")
+// }
+
+// func newMock() core.HttpClient {
+// 	return &ClientMock{}
+// }
+
+func TestDo(t *testing.T) {
+	// pass unmarshable interface
+	t.Run("TestRequestBodyError", func(t *testing.T) {
+		cfg := config{}
+		client := httpClient{
+			config: &cfg,
+		}
+
+		unmarshable := map[string]interface{}{
+			"foo": make(chan int),
+		}
+		_, err := client.do(http.MethodGet, "http://localhost", nil, unmarshable)
+		if err == nil {
+			t.Errorf("Should return malformed marshal json")
+		}
+	})
+
+	// pass a weird method name, it has to land into validateHttp method to throw
+	t.Run("TestUnableToPerformRequest", func(t *testing.T) {
+		cfg := config{}
+		client := httpClient{
+			config: &cfg,
+		}
+
+		_, err := client.do("[0:0]", "http://localhost", nil, nil)
+		if err != errInvalidRequest {
+			t.Errorf("Should return invalid http method")
+		}
+	})
+
+	// connection refused
+	t.Run("TestRequestResponseError", func(t *testing.T) {
+		cfg := config{}
+		client := httpClient{
+			config: &cfg,
+		}
+
+		_, err := client.do(http.MethodPost, "http://localhost", nil, nil)
+		if !strings.Contains(err.Error(), "connection refused") {
+			t.Errorf("Should return connection refuse")
+		}
+	})
+
+	// bad client response
+	t.Run("TestRequestUnableToDecodeJsonResponse", func(t *testing.T) {
+		expectedResponse := `{"foo": "bar"}`
+		url := "http://127.0.0.1"
+		sendBody := `{"foo":"bar"}`
+		goat_mock.MockupServer.Start()
+		goat_mock.MockupServer.Flush()
+		goat_mock.MockupServer.Add(goat_mock.Mock{
+			Method:             http.MethodPost,
+			URL:                url,
+			RequestBody:        sendBody,
+			Error:              errors.New("Invalid client response"),
+			ResponseBody:       expectedResponse,
+			ResponseStatusCode: 200,
+		})
+		cfg := config{}
+
+		client := httpClient{
+			config: &cfg,
+		}
+
+		payload := map[string]interface{}{
+			"foo": "bar",
+		}
+
+		_, err := client.do(http.MethodPost, url, nil, payload)
+		if err.Error() != "Invalid client response" {
+			t.Errorf("Should return bad response from client")
+		}
+		goat_mock.MockupServer.Stop()
+	})
+
+	// unparsable json
+	// t.Run("TestRequestUnableToDecodeJsonResponse", func(t *testing.T) {
+	// 	expectedResponse := `...`
+	// 	url := "http://127.0.0.2"
+	// 	sendBody := `{"foo":"bar"}`
+	// 	goat_mock.MockupServer.Start()
+	// 	goat_mock.MockupServer.Flush()
+	// 	goat_mock.MockupServer.Add(goat_mock.Mock{
+	// 		Method:             http.MethodPost,
+	// 		URL:                url,
+	// 		RequestBody:        sendBody,
+	// 		Error:              nil,
+	// 		ResponseBody:       expectedResponse,
+	// 		ResponseStatusCode: 200,
+	// 	})
+	// 	cfg := config{}
+
+	// 	client := httpClient{
+	// 		config: &cfg,
+	// 	}
+
+	// 	payload := map[string]interface{}{
+	// 		"foo": "bar",
+	// 	}
+
+	// 	_, err := client.do(http.MethodPost, url, nil, payload)
+	// 	fmt.Print("err", err)
+	// 	if err.Error() == "invalid json response" {
+	// 		t.Errorf("Should return unparsable response")
+	// 	}
+	// 	goat_mock.MockupServer.Stop()
+	// })
+
+	t.Run("TestNoError", func(t *testing.T) {
+		expectedResponse := `{"foo": "bar"}`
+		url := "http://127.0.0.1"
+		sendBody := `{"foo":"bar"}`
+		goat_mock.MockupServer.Start()
+		goat_mock.MockupServer.Flush()
+		goat_mock.MockupServer.Add(goat_mock.Mock{
+			Method:             http.MethodPost,
+			URL:                url,
+			RequestBody:        sendBody,
+			Error:              nil,
+			ResponseBody:       expectedResponse,
+			ResponseStatusCode: 200,
+		})
+		cfg := config{}
+
+		client := httpClient{
+			config: &cfg,
+		}
+
+		payload := map[string]interface{}{
+			"foo": "bar",
+		}
+
+		resp, err := client.do(http.MethodPost, url, nil, payload)
+		if err != nil {
+			t.Errorf("Should return nil error")
+		}
+
+		if resp.StatusCode != 200 {
+			t.Errorf("Should return status code 200")
+		}
+		goat_mock.MockupServer.Stop()
+	})
+}
+
+func TestCreateHTTPClient(t *testing.T) {
+
+	t.Run("Use Mock Server", func(t *testing.T) {
+		client := httpClient{}
+		goat_mock.MockupServer.Start()
+		client.createHttpClient()
+
+		// ! TODO: revisit this test after examples
+		if goat_mock.MockupServer.IsEnabled() != true {
+			t.Errorf("Mock server should be enabled")
+		}
+		goat_mock.MockupServer.Stop()
+	})
+
+	t.Run("Returns custom client", func(t *testing.T) {
+		expected := "Test-Client"
+		customHeader := make(http.Header)
+		customHeader.Add(expected, "true")
+		cfg := config{
+			client:  &http.Client{},
+			headers: customHeader,
+		}
+		client := httpClient{
+			config: &cfg,
+		}
+
+		header := client.setHeaders(make(http.Header))
+		client.createHttpClient()
+		if header.Get(expected) != "true" {
+			t.Errorf("Custom Client not returned")
+		}
+
+	})
+
+	t.Run("Returns client with config", func(t *testing.T) {
+		expected := "Default-Client"
+
+		cfg := config{}
+		client := httpClient{
+			config: &cfg,
+		}
+
+		// TODO: add another method to the interface to tag the client and get a meaningful test answer
+		headers := make(http.Header)
+		headers.Set(expected, "true")
+		header := client.setHeaders(headers)
+		client.createHttpClient()
+		if header.Get(expected) != "true" {
+			t.Errorf("Default Client not returned")
+		}
+
+	})
+}
+
 func TestSetRequestHeaders(t *testing.T) {
-	t.Run("Custom headers are added", func(t *testing.T) {
+	t.Run("TestCustomHeaders", func(t *testing.T) {
 		cfg := config{}
 		client := httpClient{
 			config: &cfg,
@@ -30,7 +242,7 @@ func TestSetRequestHeaders(t *testing.T) {
 		}
 	})
 
-	t.Run("Custom Agent is set if present", func(t *testing.T) {
+	t.Run("TestCustomAgent", func(t *testing.T) {
 		customAgent := "Custom-Agent-Id"
 		cfg := config{}
 		client := httpClient{
@@ -48,7 +260,7 @@ func TestSetRequestHeaders(t *testing.T) {
 		}
 	})
 
-	t.Run("Custom Agent is NOT set not passed", func(t *testing.T) {
+	t.Run("TestNotCustomAgent", func(t *testing.T) {
 		expectAgent := "Custom-Agent-Id"
 		configHeader := make(http.Header)
 		configHeader.Add(mime.HeaderUserAgent, expectAgent)
@@ -79,7 +291,7 @@ func TestSetRequestHeaders(t *testing.T) {
 func TestGetRequestBody(t *testing.T) {
 	client := httpClient{}
 
-	t.Run("NoBodyNilResponse", func(t *testing.T) {
+	t.Run("TestNoBodyNilResponse", func(t *testing.T) {
 		nilBody, err := client.getRequestBody("", nil)
 		if err != nil {
 			t.Errorf("it should return nil error")
@@ -90,7 +302,7 @@ func TestGetRequestBody(t *testing.T) {
 		}
 	})
 
-	t.Run("BodyIsJSON", func(t *testing.T) {
+	t.Run("TestBodyIsJSON", func(t *testing.T) {
 		requestBody := []string{"a", "b"}
 		jsonBody, err := client.getRequestBody("application/json", requestBody)
 		if err != nil {
@@ -102,7 +314,7 @@ func TestGetRequestBody(t *testing.T) {
 		}
 	})
 
-	t.Run("BodyIsXML", func(t *testing.T) {
+	t.Run("TestBodyIsXML", func(t *testing.T) {
 		requestBody := []string{"string", "sample"}
 		xmlBody, err := client.getRequestBody("application/xml", requestBody)
 		if err != nil {
@@ -114,7 +326,7 @@ func TestGetRequestBody(t *testing.T) {
 		}
 	})
 
-	t.Run("BodyIsJSONByDefault", func(t *testing.T) {
+	t.Run("TestBodyIsJSONByDefault", func(t *testing.T) {
 		requestBody := []string{"c"}
 		customBody, err := client.getRequestBody("application/customType", requestBody)
 		if err != nil {
@@ -133,13 +345,13 @@ func TestSetMaxIdleConnections(t *testing.T) {
 		config: &cfg,
 	}
 
-	t.Run("SetMaxIdleConnectionsDefault", func(t *testing.T) {
+	t.Run("TestSetMaxIdleConnectionsDefault", func(t *testing.T) {
 		if client.getMaxIdleConnections() != defaultMaxIdleConnections {
 			t.Errorf("geMaxIdleConnections default doesnt match")
 		}
 	})
 
-	t.Run("SetMaxIdleConnections", func(t *testing.T) {
+	t.Run("TestSetMaxIdleConnections", func(t *testing.T) {
 		expectValue := 1
 		cfg.maxIdleConnections = expectValue
 		if client.getMaxIdleConnections() != expectValue {
@@ -154,13 +366,13 @@ func TestSetResponseTimeout(t *testing.T) {
 		config: &cfg,
 	}
 
-	t.Run("SetResponseTimeoutDefault", func(t *testing.T) {
+	t.Run("TestSetResponseTimeoutDefault", func(t *testing.T) {
 		if client.getResponseTimeout() != defaultTimeout {
 			t.Errorf("getResponseTimeout default doesnt match")
 		}
 	})
 
-	t.Run("SetResponseTimeout", func(t *testing.T) {
+	t.Run("TestSetResponseTimeout", func(t *testing.T) {
 		expectValue := time.Second * 5
 		cfg.responseTimeout = expectValue
 		if client.getResponseTimeout() != expectValue {
@@ -168,11 +380,10 @@ func TestSetResponseTimeout(t *testing.T) {
 		}
 	})
 
-	t.Run("SetDisableTimeout", func(t *testing.T) {
+	t.Run("TestSetDisableTimeout", func(t *testing.T) {
 		expectValue := time.Second * 5
 		cfg.responseTimeout = expectValue
 		cfg.disableTimeouts = true
-		fmt.Print("disabled", client.getResponseTimeout())
 		if client.getResponseTimeout() != 0 {
 			t.Errorf("Disable Timeout doesnt work")
 		}
@@ -185,13 +396,13 @@ func TestSetConnectionTimeout(t *testing.T) {
 		config: &cfg,
 	}
 
-	t.Run("SetConnectionTimeoutDefault", func(t *testing.T) {
+	t.Run("TestSetConnectionTimeoutDefault", func(t *testing.T) {
 		if client.getConnectionTimeout() != defaultConnectionTimeout {
 			t.Errorf("getConnectionTimeout default doesnt match")
 		}
 	})
 
-	t.Run("SetConnectionTimeout", func(t *testing.T) {
+	t.Run("TestSetConnectionTimeout", func(t *testing.T) {
 		expectValue := time.Second * 5
 		cfg.connectionTimeout = expectValue
 		if client.getConnectionTimeout() != expectValue {
@@ -199,7 +410,7 @@ func TestSetConnectionTimeout(t *testing.T) {
 		}
 	})
 
-	t.Run("SetDisableTimeout", func(t *testing.T) {
+	t.Run("TestSetDisableTimeout", func(t *testing.T) {
 		expectValue := time.Second * 5
 		cfg.connectionTimeout = expectValue
 		cfg.disableTimeouts = true
@@ -228,13 +439,4 @@ func TestDisableAllTimeouts(t *testing.T) {
 	if client.getResponseTimeout() != 0 {
 		t.Errorf("Disable Connection doesnt work on getResponseTimeout")
 	}
-
 }
-
-// func TestDo(t *testing.T) {
-// 	client := httpClient{}
-
-// 	_, err := client.do(http.MethodGet, "http://localhost:80", nil, nil)
-// 	fmt.Print(err.Error())
-
-// }
