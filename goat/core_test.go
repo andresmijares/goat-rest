@@ -11,18 +11,6 @@ import (
 	"github.com/andresmijares/goat-rest/mime"
 )
 
-// type ClientMock struct {
-// }
-
-// func (c *ClientMock) Do(req *http.Request) (*http.Response, error) {
-// 	fmt.Print("HOLIS")
-// 	return nil, errors.New("mock error")
-// }
-
-// func newMock() core.HttpClient {
-// 	return &ClientMock{}
-// }
-
 func TestDo(t *testing.T) {
 	// pass unmarshable interface
 	t.Run("TestRequestBodyError", func(t *testing.T) {

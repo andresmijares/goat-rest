@@ -1,0 +1,14 @@
+package examples
+
+// func TestMain (m *testing.M) {
+// 	fmt.Println("Testing library from mocking server")
+
+// 	// Ensure all the request are using the mock server
+// 	goat_mock.MockupServer.Start()
+
+// 	os.Exit(m.Run())
+// }
+
+// func TestGet(t *testing.T) {
+
+// }

@@ -1,6 +1,8 @@
 package goat
 
-import "net/http"
+import (
+	"net/http"
+)
 
 func getHeaders(headers ...http.Header) http.Header {
 	if len(headers) > 0 {

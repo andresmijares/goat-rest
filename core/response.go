@@ -5,11 +5,13 @@ import (
 	"net/http"
 )
 
+// Response http parseable response used for all
+// the http methods abvailable
 type Response struct {
-	Status string
+	Status     string
 	StatusCode int
-	Headers http.Header
-	Body []byte
+	Headers    http.Header
+	Body       []byte
 }
 
 // Bytes returns bytes representation of the response

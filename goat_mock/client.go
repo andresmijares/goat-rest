@@ -7,7 +7,8 @@ import (
 	"strings"
 )
 
-type httpClientMock struct{}
+type httpClientMock struct {
+}
 
 func (c *httpClientMock) Do(request *http.Request) (*http.Response, error) {
 	requestBody, err := request.GetBody()
