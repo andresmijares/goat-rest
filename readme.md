@@ -1,4 +1,4 @@
-# GOAT Rest
+# [WIP] DO NOT USE IT YET - GOAT Rest
 
 A basic lightweight HTTP client for Go with included mock features.
 
